@@ -1,0 +1,327 @@
+---
+title: "A/B Testing Results"
+author: "Lingfeng George Yang"
+date: "6/25/2019"
+output: 
+  html_document:
+        toc: yes
+        theme: cosmo
+        highlight: tango
+        code_folding: hide
+---
+
+```{r md_setup, include = FALSE}
+knitr::opts_chunk$set(echo = T)
+knitr::opts_chunk$set(include = T)
+knitr::opts_chunk$set(tidy.opts = list(width.cutoff = 60), tidy = T, warning = F, message = F)
+require(tidyverse)
+require(knitr)
+
+options(scipen = 999)
+```
+
+```{r, include = F}
+# Run the relevant chunks first so the executive summary would display properly
+df.raw <- read.csv("data.csv", stringsAsFactors = F)
+
+df.raw$Date <- as.Date(df.raw$Date, format = "%m/%d/%y")
+
+df1 <- df.raw %>% 
+  tidyr::gather(key = "Group", value = "Count", Control, Treatment) %>% 
+  dplyr::arrange(Date, Segment, desc(Type), Success, Bouncing, Landing)
+
+df_cr <- df1 %>% 
+  dplyr::mutate(Success = if_else(Success == 1, "Success", "No.Success")) %>% 
+  tidyr::spread(key = Success, value = "Count", fill = 0) %>% 
+  dplyr::mutate(Conversion.Rate = round(Success/(Success + No.Success), 4)) %>% 
+  dplyr::arrange(Date, Segment, desc(Type), Bouncing, Landing)
+
+df_br <- df1 %>% 
+  dplyr::mutate(Bouncing = if_else(Bouncing == 1, "Bouncing", "No.Bouncing")) %>% 
+  tidyr::spread(key = Bouncing, value = "Count", fill = 0) %>% 
+  dplyr::mutate(Bouncing.Rate = round(Bouncing/(Bouncing + No.Bouncing), 4)) %>% 
+  dplyr::arrange(Date, Segment, desc(Type), Success, Landing)
+
+df_cr_summ <- df_cr %>%
+  dplyr::group_by(Group) %>% 
+  dplyr::summarise(Samples = sum(Success, No.Success), Total.Success = sum(Success), Conversion.Rate = Total.Success/Samples) %>% 
+  dplyr::mutate(Diff = c(NA, 0), Aggregate.Relative.Diff = c(NA, 0))
+
+df_cr_summ$Diff[2] <- diff(df_cr_summ$Conversion.Rate)
+df_cr_summ$Aggregate.Relative.Diff[2] <- df_cr_summ$Diff[2]/df_cr_summ$Conversion.Rate[1]
+
+df_br_summ <- df_br %>%
+  dplyr::group_by(Group) %>% 
+  dplyr::summarise(Samples = sum(Bouncing, No.Bouncing), Total.Bouncing = sum(Bouncing), Bouncing.Rate = Total.Bouncing/Samples) %>% 
+  dplyr::mutate(Diff = c(NA, 0), Aggregate.Relative.Diff = c(NA, 0))
+
+df_br_summ$Diff[2] <- diff(df_br_summ$Bouncing.Rate)
+df_br_summ$Aggregate.Relative.Diff[2] <- df_br_summ$Diff[2]/df_br_summ$Bouncing.Rate[1]
+```
+
+## Executive Summary
+Overall, the treatment does not perform better than the control in terms of Conversion Rate and Bounce Rate. On average, the treatment group has a `r round(100*df_cr_summ[2, 4], 2)`% Conversion Rate while the control group has a `r round(100*df_cr_summ[1, 4], 2)`% Conversion Rate, with an absolute difference of `r round(100*df_cr_summ[2, 5], 2)`%. As for the Bounce Rate, on average, the treatment group has a `r round(100*df_br_summ[2, 4], 2)`% Bounce Rate while the control group has a `r round(100*df_br_summ[1, 4], 2)`% Bounce Rate, with an absolute difference of `r round(100*df_br_summ[2, 5], 2)`%. Overall, the treatment (treatment) group is `r round(100*df_cr_summ[2, 6], 2)`% lower (aggregate relative difference) in Conversion Rate and `r round(100*df_br_summ[2, 6], 2)`% higher (aggregate relative difference) in Bounce Rate than the control group. The statistical tests demonstrate that the differences shown above are significant and that the treatment has a lower Conversion Rate and a higher Bounce Rate. 
+
+Moreover, none of the subgroups in this test shows a favorable result for the treatment over the control. Additional data on the categories of the Success (among other characteristics) could not only help explain the outlier date (Sep.24th) when the traffic volume was very high and the treatment performed better than the control, but also facilitate further analysis and future tests on sub-population groups. The results are displayed in the tables below.  
+
+#### Conversion Rate
+| Group | Samples | Total Success | Conversion Rate | Difference | Aggregate Relative Difference |
+|:------|------:|------:|------:|------:|------:|
+| Control | `r format(as.numeric(df_cr_summ[1, 2]), big.mark = ",")` | `r format(as.numeric(df_cr_summ[1, 3]), big.mark = ",")` | `r round(100*df_cr_summ[1, 4], 2)`% ||| 
+| treatment | `r format(as.numeric(df_cr_summ[2, 2]), big.mark = ",")` | `r format(as.numeric(df_cr_summ[2, 3]), big.mark = ",")` | `r round(100*df_cr_summ[2, 4], 2)`% | `r round(100*df_cr_summ[2, 5], 2)`% | `r round(100*df_cr_summ[2, 6], 2)`% |
+
+#### Bounce Rate
+| Group | Samples | Total Bouncing | Bounce Rate | Difference | Aggregate Relative Difference |
+|:------|------:|------:|------:|------:|------:|
+| Control | `r format(as.numeric(df_br_summ[1, 2]), big.mark = ",")` | `r format(as.numeric(df_br_summ[1, 3]), big.mark = ",")` | `r round(100*df_br_summ[1, 4], 2)`% ||| 
+| treatment | `r format(as.numeric(df_br_summ[2, 2]), big.mark = ",")` | `r format(as.numeric(df_br_summ[2, 3]), big.mark = ",")` | `r round(100*df_br_summ[2, 4], 2)`% | `r round(100*df_br_summ[2, 5], 2)`% | `r round(100*df_br_summ[2, 6], 2)`% |
+
+```{r, include = F}
+rm(list = ls())
+
+# ggplot theme
+theme1 <- list(theme(panel.grid.minor = element_blank(),
+                    plot.background = element_blank()))
+```
+
+## 1. Background & Introduction
+This report aims to investigate whether a treatment of a specfic web page improves user engagement over the current version. A test is conducted over a three week period (2018-09-16 - 2018-10-05) with (roughly) half the visitors receive treatment (treatment version) and the other half as control (old version). The main outcome variable is visitor count while segment, type, landing status, bouncing status, and success status are also controlled.  
+
+This report utilizes two metrics, Conversion Rate and Bounce Rate, to measure the success of the treatment over the control. The hypotheses are the control group has a lower Conversion Rate and a higher Bounce Rate (or simply, the treatment is better than the control), or mathematically as $\mu_{c1} < \mu_{c2}$ (where $\mu_{c1}$ is the Conversion Rate of control and $\mu_{c2}$ is the Conversion Rate of the treatment) and $\mu_{b1} > \mu_{b2}$ (where $\mu_{b1}$ is the Bounce Rate of the control and $\mu_{b2}$ is the Bounce Rate of the treatment). We will test these two hypotheses against their alternative hypotheses using a [z test](http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.408.7107&rep=rep1&type=pdf). [^1]  
+
+[^1]: Newcombe R.G. (1998) Two-Sided Confidence Intervals for the Single Proportion: Comparison of Seven Methods. Statistics in Medicine 17, 857–872.
+
+Lastly, this report also explores controlled variables and evaluates the risks and implications of this experiment, paving the way for future experiments and analyses.  
+
+
+---
+
+
+
+## 2. Data Preparation and Exploration
+### 2-1) Import dataset
+```{r}
+df.raw <- read.csv("data.csv", stringsAsFactors = F)
+```
+
+### 2-2) Inspect the raw dataset
+#### (i) Structure
+```{r}
+str(df.raw)
+```
+
+#### (ii) Summary
+```{r}
+summary(df.raw)
+```
+
+#### (iii) Missing Values
+Observed:
+```{r}
+sum(is.na(df.raw))
+```
+
+Unobserved (Missing combinations not shown in the dataset):
+```{r}
+# Unique values for each categorical variable
+df.raw.dim <- sapply(sapply(df.raw[1:6], unique), length)
+df.raw.dim
+
+# Check if all combinations of categorical variables are present: 20*5*2*2*2*2 != 1000
+prod(df.raw.dim) == nrow(df.raw)
+
+# After quick visual inspection, I hypothesize that only 5 unique combinations of Landing, Bouncing, and Success exist in this dataset (instead of 2*2*2 = 8). Check the hypothesis
+df.raw %>% 
+  tidyr::unite(Landing, Bouncing, Success, col = "LBP.Comb") %>% 
+  dplyr::select(LBP.Comb) %>% 
+  unique() %>% 
+  nrow()
+
+# Check again if the variable combinations match the number of rows in the dataset: 20*5*2*5 = 1000
+prod(df.raw.dim[1:3], 5) == nrow(df.raw)
+```
+
+### 2-3) Change data types and formats
+
+Change date format to yyyy-mm-dd
+```{r}
+df.raw$Date <- as.Date(df.raw$Date, format = "%m/%d/%y")
+```
+
+### 2-4) Melt the dataset
+Stack Control and Treatment together into the same column by creating a new binary variable distinguishing the two groups. The raw dataset will be melted (gather function) and this transformation will faciliate the analysis on customer Conversion Rate and Bounce Rate by experiment groups. This process is demonstrated in this example:  
+
+**Before:**
+```{r, echo = F}
+aa <- df.raw %>% 
+  dplyr::filter(Date == "2018-09-16", Segment == "A", Type == "R")
+kable(aa)
+```
+
+**After:**
+```{r, echo = F}
+bb <- aa %>% 
+  tidyr::gather(key = "Group", value = "Count", Control, Treatment)
+kable(bb)
+```
+
+#### Melt df.raw
+```{r}
+df1 <- df.raw %>% 
+  tidyr::gather(key = "Group", value = "Count", Control, Treatment) %>% 
+  dplyr::arrange(Date, Segment, desc(Type), Success, Bouncing, Landing)
+```
+
+
+### 2-5) Cast the dataset
+Collapse Success and Bouncing columns seperately and create two datasets: df_cr (for Conversion Rate) and df_br (for Bounce Rate). The dataset will be cast using spread function.  
+
+#### (i) Conversion Rate
+Create seperate visitor counts for Success and no Success: 
+
+```{r}
+df_cr <- df1 %>% 
+  #* Change values of Success column so the news values will be mapped to the column names of the new columns
+  dplyr::mutate(Success = if_else(Success == 1, "Success", "No.Success")) %>% 
+  #* Collapse Success column
+  tidyr::spread(key = Success, value = "Count", fill = 0) %>% 
+  #* Create a new column for Conversion Rate (for each individual experiment condition)
+  dplyr::mutate(Conversion.Rate = round(Success/(Success + No.Success), 4)) %>% 
+  #* Arrange in acccordance to original format
+  dplyr::arrange(Date, Segment, desc(Type), Bouncing, Landing)
+```
+
+#### (ii) Bounce Rate
+Create seperate visitor counts for Bouncing and no Bouncing: 
+```{r}
+df_br <- df1 %>% 
+  #* Change values of Bouncing column so the news values will be mapped to the column names of the new columns
+  dplyr::mutate(Bouncing = if_else(Bouncing == 1, "Bouncing", "No.Bouncing")) %>% 
+  #* Collapse Bouncing column
+  tidyr::spread(key = Bouncing, value = "Count", fill = 0) %>% 
+  #* Create a new column for Bounce Rate (for each individual experiment condition)
+  dplyr::mutate(Bouncing.Rate = round(Bouncing/(Bouncing + No.Bouncing), 4)) %>% 
+  #* Arrange in acccordance to original format
+  dplyr::arrange(Date, Segment, desc(Type), Success, Landing)
+```
+
+---
+
+## 3. Analysis
+### 3-1) Overall Conversion Rate and Bounce Rate
+
+```{r}
+df_cr_summ <- df_cr %>%
+  dplyr::group_by(Group) %>% 
+  dplyr::summarise(Samples = sum(Success, No.Success), Total.Success = sum(Success), Conversion.Rate = Total.Success/Samples) %>% 
+  dplyr::mutate(Diff = c(NA, 0), Aggregate.Relative.Diff = c(NA, 0))
+
+df_cr_summ$Diff[2] <- diff(df_cr_summ$Conversion.Rate)
+df_cr_summ$Aggregate.Relative.Diff[2] <- df_cr_summ$Diff[2]/df_cr_summ$Conversion.Rate[1]
+
+df_br_summ <- df_br %>%
+  dplyr::group_by(Group) %>% 
+  dplyr::summarise(Samples = sum(Bouncing, No.Bouncing), Total.Bouncing = sum(Bouncing), Bouncing.Rate = Total.Bouncing/Samples) %>% 
+  dplyr::mutate(Diff = c(NA, 0), Aggregate.Relative.Diff = c(NA, 0))
+
+df_br_summ$Diff[2] <- diff(df_br_summ$Bouncing.Rate)
+df_br_summ$Aggregate.Relative.Diff[2] <- df_br_summ$Diff[2]/df_br_summ$Bouncing.Rate[1]
+```
+
+| Group | Samples | Total Success | Conversion Rate | Difference | Aggregate Relative Difference |
+|:------|------:|------:|------:|------:|------:|
+| Control | `r format(as.numeric(df_cr_summ[1, 2]), big.mark = ",")` | `r format(as.numeric(df_cr_summ[1, 3]), big.mark = ",")` | `r round(100*df_cr_summ[1, 4], 2)`% ||| 
+| treatment | `r format(as.numeric(df_cr_summ[2, 2]), big.mark = ",")` | `r format(as.numeric(df_cr_summ[2, 3]), big.mark = ",")` | `r round(100*df_cr_summ[2, 4], 2)`% | `r round(100*df_cr_summ[2, 5], 2)`% | `r round(100*df_cr_summ[2, 6], 2)`% |
+
+| Group | Samples | Total Bouncing | Bounce Rate | Difference | Aggregate Relative Difference |
+|:------|------:|------:|------:|------:|------:|
+| Control | `r format(as.numeric(df_br_summ[1, 2]), big.mark = ",")` | `r format(as.numeric(df_br_summ[1, 3]), big.mark = ",")` | `r round(100*df_br_summ[1, 4], 2)`% ||| 
+| treatment | `r format(as.numeric(df_br_summ[2, 2]), big.mark = ",")` | `r format(as.numeric(df_br_summ[2, 3]), big.mark = ",")` | `r round(100*df_br_summ[2, 4], 2)`% | `r round(100*df_br_summ[2, 5], 2)`% | `r round(100*df_br_summ[2, 6], 2)`% |
+
+#### Hypothesis testing
+With the assumption that we can approximate the experiment with binomial distribution where each visit has a probability p of converting (or bouncing) and all visits are independent, we can test the hypotheses with the following z-tests. Given the large sample size and based on the Central Limit Theorem, we can approximate the binomial distribution with a normal distribution and z-tests are appropriate in this case.  
+
+```{r}
+prop.test(df_cr_summ$Total.Success, df_cr_summ$Samples, alternative = "greater", correct = F)
+prop.test(df_br_summ$Total.Bouncing, df_br_summ$Samples, alternative = "less", correct = F)
+```
+
+As demonstrated in the tables above, on average, the treatment group has a `r round(100*df_cr_summ[2, 4], 2)`% Conversion Rate while the control group has a `r round(100*df_cr_summ[1, 4], 2)`% Conversion Rate, with an absolute difference of `r round(100*df_cr_summ[2, 5], 2)`%. As for the Bounce Rate, on average, the treatment group has a `r round(100*df_br_summ[2, 4], 2)`% Bounce Rate while the control group has a `r round(100*df_br_summ[1, 4], 2)`% Bounce Rate, with an absolute difference of `r round(100*df_br_summ[2, 5], 2)`%. Overall, the treatment (treatment) group is `r round(100*df_cr_summ[2, 6], 2)`% lower (aggregate relative difference) in Conversion Rate and `r round(100*df_br_summ[2, 6], 2)`% higher (aggregate relative difference) in Bounce Rate than the control group. From the z tests, with p-values less than 0.00001 (or a level of confidence over 99.999%), we will reject the null hypotheses that the control has a lower Conversion Rate and a higher Bounce Rate and accept the alternative hypotheses that the control has a higher Conversion Rate and a lower Bounce Rate, or that the control performs better than the treatment. 
+
+### 3-2) Conversion Rate and Bounce Rate by day
+```{r}
+df_cr_day <- df_cr %>%
+  #* Add Date to grouping variable
+  dplyr::group_by(Date, Group) %>% 
+  dplyr::summarise(Samples = sum(Success, No.Success), Total.Success = sum(Success), Conversion.Rate = Total.Success/Samples)
+
+df_br_day <- df_br %>%
+  #* Add Date to grouping variable
+  dplyr::group_by(Date, Group) %>% 
+  dplyr::summarise(Samples = sum(Bouncing, No.Bouncing), Total.Bouncing = sum(Bouncing), Bouncing.Rate = Total.Bouncing/Samples)
+
+df_cr_day %>% ggplot2::ggplot() + 
+  geom_line(aes(Date, Conversion.Rate, color = Group)) + 
+  scale_x_date() + 
+  scale_color_manual(values = c("Control" = "blue", "Treatment" = "red"), labels = c("Control", "treatment")) + 
+  guides(color = guide_legend(title = "Group")) + 
+  ggtitle("Conversion Rate over Time") + 
+  theme1
+
+df_br_day %>% ggplot2::ggplot() + 
+  geom_line(aes(Date, Bouncing.Rate, color = Group)) + 
+  scale_x_date() + 
+  scale_color_manual(values = c("Control" = "blue", "Treatment" = "red"), labels = c("Control", "treatment")) + 
+  guides(color = guide_legend(title = "Group")) + 
+  ggtitle("Bounce Rate over Time") + 
+  theme1
+```
+
+Overall, we see that Conversion Rate is consistently lower for treatment (treatment) group than for control group and Bounce Rate is consistently higher for treatment group than for control group. However, there was an exception on Sep.24th when a much higher Conversion Rate and a much lower Bounce Rate were observed. Notably, the Conversion Rate of the treatment group was higher than that of the control group. This could be due to the irregular or abnormal traffic generated from a specific source. At any capacity, this irregularity is worthing probing and further analysis will be possible if there were more detailed sales information.  
+
+### 3-3) Conversion Rate and Bounce Rate by other variables
+I have created the plot grid below to examine the Conversion Rate and Bounce Rate for subgroups. For any new features (that potentially improves the interface), returning users may not respond as positively as newcomers simply because the old customers already got used to the current layout. Also, traffic directed from different sources could also play a part in how the users might interact with the treatment.  
+
+#### Conversion Rate
+```{r}
+df_cr_other <- df_cr %>%
+  dplyr::group_by(Segment, Type, Date, Group) %>% 
+  dplyr::summarise(Samples = sum(Success, No.Success), Total.Success = sum(Success), Conversion.Rate = Total.Success/Samples)
+
+df_cr_other %>% ggplot2::ggplot() + 
+  geom_line(aes(Date, Conversion.Rate, color = factor(Group))) + 
+  scale_x_date() + 
+  scale_color_manual(values = c("Control" = "blue", "Treatment" = "red"), labels = c("Control", "treatment")) + 
+  guides(color = guide_legend(title = "Group")) +
+  ggtitle("Conversion Rate over Time by User Type and Segment") + 
+  facet_grid(Segment ~ Type, labeller = label_wrap_gen(10)) + 
+  theme1
+```
+
+
+#### Bounce Rate
+```{r}
+df_br_other <- df_br %>%
+  dplyr::group_by(Segment, Type, Date, Group) %>% 
+  dplyr::summarise(Samples = sum(Bouncing, No.Bouncing), Total.Bouncing = sum(Bouncing), Bouncing.Rate = Total.Bouncing/Samples)
+
+df_br_other %>% ggplot2::ggplot() + 
+  geom_line(aes(Date, Bouncing.Rate, color = factor(Group))) + 
+  scale_x_date() + 
+  scale_color_manual(values = c("Control" = "blue", "Treatment" = "red"), labels = c("Control", "treatment")) + 
+  guides(color = guide_legend(title = "Group")) +
+  ggtitle("Bounce Rate over Time by User Type and Segment") + 
+  facet_grid(Segment ~ Type, labeller = label_wrap_gen(10)) + 
+  theme1
+```
+
+There were no highly noticeable trends (apart from the ones observed from the time series plots) from the subgroups and the treatment performs consisently worse than the control. 
+
+## 4. Conclusions
+Based on the data collected in 20 days, I would revert to control and not deploy the treatment based on two main metrics: Conversion Rate and Bounce Rate. Specifically, we have observed that the average Conversion Rate is 4.70% lower and the Bounce Rate is 4.49% higher (aggregate relative difference) for the treatment for almost all sub-population groups throughout the testing period.  
+
+With that said, there are three potential risks in choosing the control over the treatment. First and foremost, Sep.24th appears to be an outlier and there was a reversal where the treatment performed better with unusually high number of visitors. If there were data available on the category or characteristics of the traffic on that day, we could better understand and further test out if certain sub-groups might react positively towards the change. Also, the two metrics used here might not be reflective of revenue. It is possible that the treatment does much better than the control on the higher valued sales and much worse on the lower valued ones. As a result, both Conversion Rate and Bounce Rate may suggest that the control group does better, but the treatment might generate higher revenue overall. Although highly unlikely, this scenario needs to be looked at and eliminated with the help of pricing data. Lastly, the assumptions that all visits are independent might not hold given that same visitors could have counted for multiple visits and across groups (New user becoming returning user in subsequent visits). However, given the large sample size and extremely low p-value, I would not worry too much about it. 
+
+Overall, athough there could be certain sub-groups of the visits where the treatment could perform better (which requires further testing with the help of the more detailed category data of the sales), given the overwhelming results from the statistical tests, I would suggest with an extremely high level of confidence (> 0.99999) that we revert to the control even without the corroboration from other datasets. 
+
+---
