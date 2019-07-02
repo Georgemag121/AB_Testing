@@ -1,5 +1,5 @@
 ---
-title: "A/B Testing Results"
+title: "A/B Testing"
 author: "Lingfeng George Yang"
 date: "6/25/2019"
 output: 
